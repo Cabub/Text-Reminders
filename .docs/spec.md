@@ -5,7 +5,7 @@ The SMS Reminder App is designed to help businesses send text message reminders 
 
 ## Core Functionality Requirements
 
-![App wireframe including all three screens and their actions](workflow.png "Wireframe")
+![App wireframe including all three screens and their actions](wireframe.svg "Wireframe")
 
 ### Application Workflow
 The application must implement some approximation of the workflow shown in the wireframe:
