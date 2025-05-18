@@ -4,18 +4,17 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.telephony.PhoneNumberUtils.areSamePhoneNumber
+import android.telephony.PhoneNumberUtils.isWellFormedSmsAddress
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
+import androidx.compose.ui.focus.FocusRequester
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-
-data class UiState(
-    val message: String = "",
-    val recipients: List<String> = listOf("")
-)
+import kotlin.text.filter
 
 sealed class SendStatus {
     data object Pending   : SendStatus()
@@ -24,17 +23,32 @@ sealed class SendStatus {
     data class Failure(val reason: String) : SendStatus()
 }
 
+data class Recipient(
+    val number: String = "",
+    val status: SendStatus = SendStatus.Pending,
+    val isValid: Boolean = false,
+    val isDuplicate: Boolean = false,
+    val validationMessage: String = "",
+    val focusRequester: FocusRequester = FocusRequester(),
+)
+
+data class UiState(
+    val message: String = "",
+    val recipients: List<Recipient> = listOf(Recipient())
+)
+
 class RemindersViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    private val _statusList = MutableStateFlow<List<SendStatus>>(emptyList())
-    val statusList: StateFlow<List<SendStatus>> = _statusList
-
     fun updateStatus(idx: Int, newStatus: SendStatus) {
-        _statusList.update { list ->
-            list.toMutableList().also { it[idx] = newStatus }
+        _uiState.update { state ->
+            state.copy(
+                recipients = state.recipients.toMutableList().also { list ->
+                    list[idx] = list[idx].copy(status = newStatus)
+                }
+            )
         }
     }
 
@@ -42,13 +56,26 @@ class RemindersViewModel : ViewModel() {
         _uiState.update { it.copy(message = new) }
 
     fun addRecipient() =
-        _uiState.update { it.copy(recipients = it.recipients + "") }
+        _uiState.update { it.copy(recipients = it.recipients + Recipient()) }
 
     fun updateRecipient(idx: Int, value: String) =
-        _uiState.update {
-            it.copy(recipients = it.recipients.toMutableList().also { list ->
-                list[idx] = value
-            })
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update {
+                it.copy(recipients = it.recipients.toMutableList().also { list ->
+                    list[idx] = Recipient(
+                        value.filter { c -> c in "0123456789" },
+                        list[idx].status,
+                        isValid = value.isNotEmpty() && isWellFormedSmsAddress(value),
+                        isDuplicate = list.count {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                areSamePhoneNumber(value, it.number, "US")
+                            } else {
+                                value == it.number
+                            }
+                        } > 1
+                    )
+                })
+            }
         }
 
     fun removeRecipient(idx: Int) =
@@ -57,17 +84,14 @@ class RemindersViewModel : ViewModel() {
         }
 
     fun resetAll() {
-        _statusList.value = emptyList()
         _uiState.value = UiState()
     }
 
     fun sendAll(
         context: Context,
-        recipients: List<String>,
+        recipients: List<Recipient>,
         message: String
     ) {
-        _statusList.value = List(recipients.size) { SendStatus.Pending }
-
         viewModelScope.launch(Dispatchers.IO) {
             val smsManager: SmsManager? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val subId = SubscriptionManager.getDefaultSmsSubscriptionId()
@@ -79,14 +103,19 @@ class RemindersViewModel : ViewModel() {
             }
 
             if (smsManager == null) {
-                // Fallback if no SmsManager found
-                _statusList.value = List(recipients.size) {
-                    SendStatus.Failure("SMS manager not available")
+                _uiState.update {
+                    it.copy(recipients = it.recipients.toMutableList().also { list ->
+                        list.forEachIndexed { idx, recipient ->
+                            list[idx] = recipient.copy(
+                                status = SendStatus.Failure("No SMS manager available")
+                            )
+                        }
+                    })
                 }
                 return@launch
             }
 
-            recipients.forEachIndexed { idx, number ->
+            recipients.forEachIndexed { idx, recipient ->
                 try {
                     val sentPI = PendingIntent.getBroadcast(
                         context, idx,
@@ -101,14 +130,15 @@ class RemindersViewModel : ViewModel() {
                     )
 
                     smsManager.sendTextMessage(
-                        number, null, message, sentPI, deliveredPI
+                        recipient.number, null, message, sentPI, deliveredPI
                     )
-
                 } catch (e: Exception) {
-                    _statusList.update { list ->
-                        list.toMutableList().apply {
-                            set(idx, SendStatus.Failure(e.message ?: "Send error"))
-                        }
+                    _uiState.update {
+                        it.copy(recipients = it.recipients.toMutableList().also { list ->
+                            list[idx] = recipient.copy(
+                                status = SendStatus.Failure(e.message ?: "Send error")
+                            )
+                        })
                     }
                 }
             }

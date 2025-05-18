@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
@@ -32,13 +31,11 @@ class MainActivity : ComponentActivity() {
     private lateinit var sentReceiver: BroadcastReceiver
     private lateinit var deliveredReceiver: BroadcastReceiver
 
-    @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
 
-        // set up your Delivery & Sent receivers, which call vm.updateStatus(...)
         sentReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 val idx = intent.getIntExtra("index", -1)
@@ -111,7 +108,6 @@ class MainActivity : ComponentActivity() {
                             val ctx = LocalContext.current
                             ConfirmScreen(
                                 uiState = uiState,
-                                onBack  = { navController.popBackStack() },
                                 onSend  = {
                                     vm.sendAll(ctx, uiState.recipients, uiState.message)
                                     navController.navigate("status")
@@ -120,14 +116,8 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("status") {
                             val uiState    by vm.uiState.collectAsState()
-                            val statusList by vm.statusList.collectAsState()
                             StatusScreen(
                                 recipients = uiState.recipients,
-                                statuses   = statusList,
-                                onCancel   = {
-                                    vm.resetAll()
-                                    navController.popBackStack("input", false)
-                                },
                                 onDone     = {
                                     vm.resetAll()
                                     navController.popBackStack("input", false)
