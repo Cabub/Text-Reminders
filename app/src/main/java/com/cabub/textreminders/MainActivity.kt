@@ -10,7 +10,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
-import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -26,39 +25,12 @@ import androidx.navigation.compose.rememberNavController
 import com.cabub.textreminders.ui.theme.TextRemindersTheme
 
 class MainActivity : ComponentActivity() {
-    private val vm: RemindersViewModel by viewModels()
-
-    private lateinit var sentReceiver: BroadcastReceiver
-    private lateinit var deliveredReceiver: BroadcastReceiver
+    private val vm = RemindersViewModel.getInstance()
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        sentReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context, intent: Intent) {
-                val idx = intent.getIntExtra("index", -1)
-                val status = if (resultCode == RESULT_OK)
-                    SendStatus.Success
-                else
-                    SendStatus.Failure("Send error")
-                vm.updateStatus(idx, status)
-            }
-        }
-        deliveredReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context, intent: Intent) {
-                val idx = intent.getIntExtra("index", -1)
-                vm.updateStatus(idx, SendStatus.Delivered)
-            }
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(sentReceiver, IntentFilter(SMS_SENT_ACTION), RECEIVER_NOT_EXPORTED)
-            registerReceiver(deliveredReceiver, IntentFilter(SMS_DELIVERED_ACTION), RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(sentReceiver, IntentFilter(SMS_SENT_ACTION))
-            registerReceiver(deliveredReceiver, IntentFilter(SMS_DELIVERED_ACTION))
-        }
 
         val smsPermissionLauncher = registerForActivityResult(RequestPermission()) { granted ->
             if (!granted) {
@@ -100,7 +72,8 @@ class MainActivity : ComponentActivity() {
                                 onAddRecipient      = vm::addRecipient,
                                 onUpdateRecipient   = vm::updateRecipient,
                                 onRemoveRecipient   = vm::removeRecipient,
-                                onConfirm           = { navController.navigate("confirm") }
+                                onConfirm           = { navController.navigate("confirm") },
+                                onFormatRecipient   = vm::formatRecipient
                             )
                         }
                         composable("confirm") {
@@ -117,10 +90,10 @@ class MainActivity : ComponentActivity() {
                         composable("status") {
                             val uiState    by vm.uiState.collectAsState()
                             StatusScreen(
-                                recipients = uiState.recipients,
+                                uiState,
                                 onDone     = {
-                                    vm.resetAll()
                                     navController.popBackStack("input", false)
+                                    vm.resetAll()
                                 }
                             )
                         }
@@ -128,11 +101,5 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        unregisterReceiver(sentReceiver)
-        unregisterReceiver(deliveredReceiver)
     }
 }

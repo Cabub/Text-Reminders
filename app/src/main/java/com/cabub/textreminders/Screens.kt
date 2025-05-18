@@ -1,7 +1,6 @@
 package com.cabub.textreminders
 
 import android.telephony.PhoneNumberUtils.formatNumber
-import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -15,11 +14,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.KeyboardType
-import kotlinx.coroutines.launch
 
 private fun safeFormat(number: String) = formatNumber(number, "US") ?: number
 
@@ -31,10 +28,9 @@ fun InputScreen(
     onAddRecipient: () -> Unit,
     onUpdateRecipient: (Int, String) -> Unit,
     onRemoveRecipient: (Int) -> Unit,
-    onConfirm: () -> Unit
+    onConfirm: () -> Unit,
+    onFormatRecipient: (Int) -> Unit
 ) {
-    val coroutineScope = rememberCoroutineScope()
-
     Scaffold { padding ->
         Column(
             Modifier
@@ -77,8 +73,8 @@ fun InputScreen(
                                 .weight(1f)
                                 .focusRequester(recipient.focusRequester)
                                 .onFocusChanged { focusState ->
-                                    if (!focusState.isFocused) {
-                                        onUpdateRecipient(idx, safeFormat(recipient.number))
+                                    if (!focusState.isFocused && focusState.isCaptured) {
+                                        onFormatRecipient(idx)
                                     }
                                 },
                             singleLine = true,
@@ -90,7 +86,7 @@ fun InputScreen(
                             supportingText = {
                                 if (!recipient.isValid) {
                                     Text(
-                                        text = if (recipient.number.isBlank()) "Recipient cannot be empty" else if (recipient.isDuplicate) "Duplicate recipient" else "Invalid recipient",
+                                        text = recipient.validationMessage,
                                         color = MaterialTheme.colorScheme.error
                                     )
                                 } else ""
@@ -106,13 +102,7 @@ fun InputScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Button(onClick = {
-                onAddRecipient()
-                coroutineScope.launch {
-                    kotlinx.coroutines.delay(100)
-                    uiState.recipients.lastOrNull()?.focusRequester?.requestFocus()
-                }
-            }) { Text("Add Recipient") }
+            Button(onClick = onAddRecipient) { Text("Add Recipient") }
             Spacer(Modifier.weight(1f))
             Button(
                 onClick = onConfirm,
@@ -173,7 +163,7 @@ fun ConfirmScreen(
 
 @Composable
 fun StatusScreen(
-    recipients: List<Recipient>,
+    uiState: UiState,
     onDone: () -> Unit
 ) {
     Scaffold { padding ->
@@ -185,7 +175,7 @@ fun StatusScreen(
         ) {
             Text("Progress", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
-            recipients.forEach { recipient ->
+            uiState.recipients.forEach { recipient ->
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -200,7 +190,6 @@ fun StatusScreen(
                             contentDescription = "Failed",
                             tint = MaterialTheme.colorScheme.error
                         )
-
                         SendStatus.Delivered -> Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = "Delivered"

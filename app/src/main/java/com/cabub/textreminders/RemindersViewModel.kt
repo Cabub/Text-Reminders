@@ -5,9 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.telephony.PhoneNumberUtils.areSamePhoneNumber
+import android.telephony.PhoneNumberUtils.formatNumber
 import android.telephony.PhoneNumberUtils.isWellFormedSmsAddress
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
+import android.util.Log
 import androidx.compose.ui.focus.FocusRequester
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlin.text.filter
+import kotlin.text.get
 
 sealed class SendStatus {
     data object Pending   : SendStatus()
@@ -37,16 +40,19 @@ data class UiState(
     val recipients: List<Recipient> = listOf(Recipient())
 )
 
-class RemindersViewModel : ViewModel() {
-
+class RemindersViewModel private constructor() : ViewModel() {
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     fun updateStatus(idx: Int, newStatus: SendStatus) {
         _uiState.update { state ->
             state.copy(
-                recipients = state.recipients.toMutableList().also { list ->
-                    list[idx] = list[idx].copy(status = newStatus)
+                recipients = state.recipients.mapIndexed { index, recipient ->
+                    if (index == idx) {
+                        recipient.copy(status = newStatus)
+                    } else {
+                        recipient
+                    }
                 }
             )
         }
@@ -55,28 +61,50 @@ class RemindersViewModel : ViewModel() {
     fun updateMessage(new: String) =
         _uiState.update { it.copy(message = new) }
 
-    fun addRecipient() =
+    fun addRecipient() {
         _uiState.update { it.copy(recipients = it.recipients + Recipient()) }
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(100)
+            _uiState.value.recipients.last().focusRequester.requestFocus()
+        }
+    }
 
     fun updateRecipient(idx: Int, value: String) =
-        viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update {
-                it.copy(recipients = it.recipients.toMutableList().also { list ->
-                    list[idx] = Recipient(
-                        value.filter { c -> c in "0123456789" },
-                        list[idx].status,
-                        isValid = value.isNotEmpty() && isWellFormedSmsAddress(value),
-                        isDuplicate = list.count {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                areSamePhoneNumber(value, it.number, "US")
-                            } else {
-                                value == it.number
-                            }
-                        } > 1
-                    )
-                })
-            }
+        _uiState.update { state ->
+            state.copy(
+                recipients = state.recipients.mapIndexed { index, recipient ->
+                    if (index == idx) {
+                        recipient.copy(
+                            number = value.filter { c -> c in "0123456789" },
+                            isValid = value.isNotEmpty() && isWellFormedSmsAddress(value),
+                            isDuplicate = state.recipients.count {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    areSamePhoneNumber(value, it.number, "US")
+                                } else {
+                                    value == it.number
+                                }
+                            } > 1
+                        )
+                    } else {
+                        recipient
+                    }
+                }
+            )
         }
+
+    fun formatRecipient(idx: Int) {
+            _uiState.update { state ->
+                state.copy(recipients = state.recipients.mapIndexed { index, recipient ->
+                    if (index == idx) {
+                        recipient.copy(
+                            number = formatNumber(recipient.number, "US") ?: recipient.number,
+                        )
+                    } else {
+                        recipient
+                    }
+                })
+        }
+    }
 
     fun removeRecipient(idx: Int) =
         _uiState.update {
@@ -118,16 +146,27 @@ class RemindersViewModel : ViewModel() {
             recipients.forEachIndexed { idx, recipient ->
                 try {
                     val sentPI = PendingIntent.getBroadcast(
-                        context, idx,
-                        Intent(SMS_SENT_ACTION).putExtra("index", idx),
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        context,
+                        100 + idx, // Unique request code for each recipient
+                        Intent(context, SentReceiver::class.java).apply {
+                            action = SMS_SENT_ACTION
+                            putExtra("index", idx)
+                        },
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
                     )
 
                     val deliveredPI = PendingIntent.getBroadcast(
-                        context, idx + 1000,
-                        Intent(SMS_DELIVERED_ACTION).putExtra("index", idx),
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        context,
+                        200 + idx, // Unique request code for each recipient
+                        Intent(context, DeliveredReceiver::class.java).apply {
+                            action = SMS_DELIVERED_ACTION
+                            putExtra("index", idx)
+                        },
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
                     )
+
+                    Log.d("RemindersViewModel", "Creating sentPI for index $idx, requestCode: ${100 + idx}")
+                    Log.d("RemindersViewModel", "Creating deliveredPI for index $idx, requestCode: ${200 + idx}")
 
                     smsManager.sendTextMessage(
                         recipient.number, null, message, sentPI, deliveredPI
@@ -141,6 +180,17 @@ class RemindersViewModel : ViewModel() {
                         })
                     }
                 }
+            }
+        }
+    }
+
+    companion object {
+        @Volatile
+        private var INSTANCE: RemindersViewModel? = null
+
+        fun getInstance(): RemindersViewModel {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: RemindersViewModel().also { INSTANCE = it }
             }
         }
     }
