@@ -2,7 +2,6 @@ package com.cabub.textreminders
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.*
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -42,7 +41,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // ask once on startup
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -93,7 +91,7 @@ class MainActivity : ComponentActivity() {
                                 uiState,
                                 onDone     = {
                                     navController.popBackStack("input", false)
-                                    vm.resetAll()
+                                    vm.resetState()
                                 }
                             )
                         }

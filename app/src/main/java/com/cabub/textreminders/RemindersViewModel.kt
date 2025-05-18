@@ -17,7 +17,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlin.text.filter
-import kotlin.text.get
 
 sealed class SendStatus {
     data object Pending   : SendStatus()
@@ -111,8 +110,10 @@ class RemindersViewModel private constructor() : ViewModel() {
             it.copy(recipients = it.recipients.filterIndexed { i, _ -> i != idx })
         }
 
-    fun resetAll() {
-        _uiState.value = UiState()
+    fun resetState() {
+        _uiState.value = UiState(
+            message = _uiState.value.message
+        )
     }
 
     fun sendAll(

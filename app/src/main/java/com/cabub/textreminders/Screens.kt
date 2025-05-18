@@ -1,6 +1,5 @@
 package com.cabub.textreminders
 
-import android.telephony.PhoneNumberUtils.formatNumber
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -18,7 +17,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.KeyboardType
 
-private fun safeFormat(number: String) = formatNumber(number, "US") ?: number
 
 
 @Composable
@@ -32,85 +30,94 @@ fun InputScreen(
     onFormatRecipient: (Int) -> Unit
 ) {
     Scaffold { padding ->
-        Column(
-            Modifier
+        LazyColumn(
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(16.dp),
+            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            val messageIsValid = uiState.message.isNotBlank()
-            Text("Message:", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
-                value = uiState.message,
-                onValueChange = onMessageChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp),
-                isError = !messageIsValid,
-                supportingText = {
-                    if (!messageIsValid) {
-                        Text(
-                            text = "Message cannot be empty",
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                },
-            )
-            Spacer(Modifier.height(16.dp))
-            Text("Recipients:", style = MaterialTheme.typography.titleMedium)
-            LazyColumn {
-                itemsIndexed(uiState.recipients) { idx, recipient ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        OutlinedTextField(
-                            value = recipient.number,
-                            onValueChange = { onUpdateRecipient(idx, it) },
-                            modifier = Modifier
-                                .weight(1f)
-                                .focusRequester(recipient.focusRequester)
-                                .onFocusChanged { focusState ->
-                                    if (!focusState.isFocused && focusState.isCaptured) {
-                                        onFormatRecipient(idx)
-                                    }
-                                },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Phone,
-                                showKeyboardOnFocus = true
-                            ),
-                            isError = !recipient.isValid,
-                            supportingText = {
-                                if (!recipient.isValid) {
-                                    Text(
-                                        text = recipient.validationMessage,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                } else ""
-                            },
-                        )
-                        IconButton(
-                            onClick = { onRemoveRecipient(idx) },
-                            enabled = uiState.recipients.size > 1
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Remove")
+            item {
+                Text("Message:", style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(
+                    value = uiState.message,
+                    onValueChange = onMessageChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    isError = !uiState.message.isNotBlank(),
+                    supportingText = {
+                        if (!uiState.message.isNotBlank()) {
+                            Text(
+                                text = "Message cannot be empty",
+                                color = MaterialTheme.colorScheme.error
+                            )
                         }
+                    },
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("Recipients:", style = MaterialTheme.typography.titleMedium)
+            }
+            itemsIndexed(uiState.recipients) { idx, recipient ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    OutlinedTextField(
+                        value = recipient.number,
+                        onValueChange = { onUpdateRecipient(idx, it) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(recipient.focusRequester)
+                            .onFocusChanged { focusState ->
+                                if (!focusState.isFocused && focusState.isCaptured) {
+                                    onFormatRecipient(idx)
+                                }
+                            },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Phone,
+                            showKeyboardOnFocus = true
+                        ),
+                        isError = !recipient.isValid,
+                        supportingText = {
+                            if (!recipient.isValid) {
+                                Text(
+                                    text = recipient.validationMessage,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            } else ""
+                        },
+                    )
+                    IconButton(
+                        onClick = { onRemoveRecipient(idx) },
+                        enabled = uiState.recipients.size > 1
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove")
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            Button(onClick = onAddRecipient) { Text("Add Recipient") }
-            Spacer(Modifier.weight(1f))
-            Button(
-                onClick = onConfirm,
-                enabled = uiState.message.isNotBlank() && uiState.recipients.all {
-                    it.isValid && it.number.isNotBlank() && !it.isDuplicate
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Confirm") }
+            item {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onAddRecipient,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Add Recipient") }
+                    Button(
+                        onClick = onConfirm,
+                        enabled = uiState.message.isNotBlank() && uiState.recipients.all {
+                            it.isValid && it.number.isNotBlank() && !it.isDuplicate
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Confirm") }
+                }
+            }
         }
     }
 }
@@ -121,42 +128,50 @@ fun ConfirmScreen(
     onSend: () -> Unit
 ) {
     Scaffold { padding ->
-        Column(
-            Modifier
+        LazyColumn(
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(16.dp),
+            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            Text("Confirm Message:", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
-                value = uiState.message,
-                onValueChange = {},
-                readOnly = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp)
-            )
-            Spacer(Modifier.height(16.dp))
-            Text("Confirm Recipients:", style = MaterialTheme.typography.titleMedium)
-            LazyColumn {
-                itemsIndexed(uiState.recipients) { _, recipient ->
-                    OutlinedTextField(
-                        value = recipient.number,
-                        readOnly = true,
-                        onValueChange = {},
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                    )
+            item {
+                Text("Confirm Message:", style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(
+                    value = uiState.message,
+                    onValueChange = {},
+                    readOnly = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("Confirm Recipients:", style = MaterialTheme.typography.titleMedium)
+            }
+            itemsIndexed(uiState.recipients) { _, recipient ->
+                OutlinedTextField(
+                    value = recipient.number,
+                    readOnly = true,
+                    onValueChange = {},
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                )
+            }
+            item {
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = onSend,
+                        enabled = uiState.message.isNotBlank() && uiState.recipients.all { it.number.isNotBlank() && it.isValid && !it.isDuplicate },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Send") }
                 }
             }
-            Spacer(Modifier.weight(1f))
-            Button(
-                onClick = onSend,
-                enabled = uiState.message.isNotBlank() && uiState.recipients.all { it.number.isNotBlank() && it.isValid && !it.isDuplicate },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Send") }
         }
     }
 }
@@ -167,15 +182,18 @@ fun StatusScreen(
     onDone: () -> Unit
 ) {
     Scaffold { padding ->
-        Column(
-            Modifier
+        LazyColumn(
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(16.dp),
+            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            Text("Progress", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(8.dp))
-            uiState.recipients.forEach { recipient ->
+            item {
+                Text("Progress", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+            }
+            itemsIndexed(uiState.recipients) { _, recipient ->
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -207,9 +225,17 @@ fun StatusScreen(
                     )
                 }
             }
-            Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+            item {
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = onDone,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Done") }
+                }
             }
         }
     }
